@@ -17,6 +17,8 @@ import (
 	"math/big"
 	"math/bits"
 	"strings"
+
+	ssz "github.com/ferranbt/fastssz"
 )
 
 const (
@@ -542,24 +544,20 @@ func bigEndianUint56(b []byte) uint64 {
 
 // MarshalSSZTo implements the fastssz.Marshaler interface and serializes the
 // integer into an already pre-allocated buffer.
-func (z *Int) MarshalSSZTo(dst []byte) ([]byte, error) {
-	if len(dst) < 32 {
-		return nil, fmt.Errorf("%w: have %d, want %d bytes", ErrBadBufferLength, len(dst), 32)
-	}
-	binary.LittleEndian.PutUint64(dst[0:8], z[0])
-	binary.LittleEndian.PutUint64(dst[8:16], z[1])
-	binary.LittleEndian.PutUint64(dst[16:24], z[2])
-	binary.LittleEndian.PutUint64(dst[24:32], z[3])
+func (z *Int) MarshalSSZTo(buf []byte) (dst []byte, err error) {
+	dst = buf
 
-	return dst[32:], nil
+	for ii := 0; ii < 4; ii++ {
+		dst = ssz.MarshalUint64(dst, z[ii])
+	}
+
+	return
 }
 
 // MarshalSSZ implements the fastssz.Marshaler interface and returns the integer
 // marshalled into a newly allocated byte slice.
 func (z *Int) MarshalSSZ() ([]byte, error) {
-	blob := make([]byte, 32)
-	_, _ = z.MarshalSSZTo(blob) // ignore error, cannot fail, surely have 32 byte space in blob
-	return blob, nil
+	return ssz.MarshalSSZ(z)
 }
 
 // SizeSSZ implements the fastssz.Marshaler interface and returns the byte size
@@ -571,22 +569,42 @@ func (*Int) SizeSSZ() int {
 // UnmarshalSSZ implements the fastssz.Unmarshaler interface and parses an encoded
 // integer into the local struct.
 func (z *Int) UnmarshalSSZ(buf []byte) error {
-	if len(buf) != 32 {
-		return fmt.Errorf("%w: have %d, want %d bytes", ErrBadEncodedLength, len(buf), 32)
+	var err error
+	size := uint64(len(buf))
+	if size != 32 {
+		return ssz.ErrSize
 	}
-	z[0] = binary.LittleEndian.Uint64(buf[0:8])
-	z[1] = binary.LittleEndian.Uint64(buf[8:16])
-	z[2] = binary.LittleEndian.Uint64(buf[16:24])
-	z[3] = binary.LittleEndian.Uint64(buf[24:32])
 
-	return nil
+	for ii := 0; ii < 4; ii++ {
+		z[ii] = ssz.UnmarshallUint64(buf[0:32][ii*8 : (ii+1)*8])
+	}
+
+	return err
 }
 
-// HashTreeRoot implements the fastssz.HashRoot interface's non-dependent part.
 func (z *Int) HashTreeRoot() ([32]byte, error) {
-	var hash [32]byte
-	_, _ = z.MarshalSSZTo(hash[:]) // ignore error, cannot fail
-	return hash, nil
+	return ssz.HashWithDefaultHasher(z)
+}
+
+// HashTreeRootWith ssz hashes the Int object with a hasher
+func (z *Int) HashTreeRootWith(hh ssz.HashWalker) (err error) {
+	indx := hh.Index()
+
+	{
+		subIndx := hh.Index()
+		for _, i := range z {
+			hh.AppendUint64(i)
+		}
+		hh.Merkleize(subIndx)
+	}
+
+	hh.Merkleize(indx)
+	return
+}
+
+// GetTree ssz hashes the Int object
+func (z *Int) GetTree() (*ssz.Node, error) {
+	return ssz.ProofTree(z)
 }
 
 // EncodeRLP implements the rlp.Encoder interface from go-ethereum

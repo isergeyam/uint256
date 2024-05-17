@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+
+	ssz "github.com/ferranbt/fastssz"
 )
 
 var (
@@ -740,17 +742,11 @@ func TestSSZEncodeDecodeHash(t *testing.T) {
 
 func TestSSZEncodeDecodeErrors(t *testing.T) {
 	small := make([]byte, 31)
-	if _, err := new(Int).MarshalSSZTo(small); !errors.Is(err, ErrBadBufferLength) {
-		t.Fatalf("overflow marshal error mismatch: have %v, want %v", err, ErrBadBufferLength)
-	}
-	if err := new(Int).UnmarshalSSZ(small); !errors.Is(err, ErrBadEncodedLength) {
+	if err := new(Int).UnmarshalSSZ(small); !errors.Is(err, ssz.ErrSize) {
 		t.Fatalf("underflow unmarshal error mismatch: have %v, want %v", err, ErrBadEncodedLength)
 	}
 	large := make([]byte, 33)
-	if _, err := new(Int).MarshalSSZTo(large); err != nil {
-		t.Fatalf("underflow marshal error mismatch: have %v, want %v", err, nil)
-	}
-	if err := new(Int).UnmarshalSSZ(large); !errors.Is(err, ErrBadEncodedLength) {
+	if err := new(Int).UnmarshalSSZ(large); !errors.Is(err, ssz.ErrSize) {
 		t.Fatalf("overflow unmarshal error mismatch: have %v, want %v", err, ErrBadEncodedLength)
 	}
 }
